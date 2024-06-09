@@ -10,13 +10,14 @@ from struq import format_with_other_delimiters, _tokenize_fn, jload, jdump
 from dotenv import load_dotenv
 
 
-def load_model_and_tokenizer(model_path, tokenizer_path=None, device="cuda:0", **kwargs):
+def load_model_and_tokenizer(model_path, tokenizer_path=None, device="cuda:3", **kwargs):
     model = (
         transformers.AutoModelForCausalLM.from_pretrained(
-            model_path, torch_dtype=torch.float16, load_in_4bit=True, trust_remote_code=True, **kwargs
+            model_path, torch_dtype=torch.bfloat16, trust_remote_code=True, **kwargs
         )
         .eval()
     )
+    model.to(device)
     tokenizer_path = model_path if tokenizer_path is None else tokenizer_path
     tokenizer = transformers.AutoTokenizer.from_pretrained(tokenizer_path, trust_remote_code=True, use_fast=False)
 
@@ -257,7 +258,7 @@ def test():
     parser.add_argument('--data_path', type=str, default='data/davinci_003_outputs.json')
     args = parser.parse_args()
 
-    model, tokenizer = load_model_and_tokenizer(args.model_name_or_path, low_cpu_mem_usage=True, use_cache=False, device="cuda:" + args.device)
+    model, tokenizer = load_model_and_tokenizer(args.model_name_or_path, low_cpu_mem_usage=True, use_cache=False, device="cuda:3") # used to be cuda: + args.device
     model_name, frontend_delimiters, training_attacks, t = args.model_name_or_path.split('/')[-1].split('_')
     
     for a in args.attack:
