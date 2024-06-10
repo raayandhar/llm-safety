@@ -13,7 +13,7 @@ from dotenv import load_dotenv
 def load_model_and_tokenizer(model_path, tokenizer_path=None, device="cuda:3", **kwargs):
     model = (
         transformers.AutoModelForCausalLM.from_pretrained(
-            model_path, torch_dtype=torch.bfloat16, trust_remote_code=True, **kwargs
+            model_path, torch_dtype=torch.bfloat16, trust_remote_code=True, **kwargs # optionally use load_in_4bit=True
         )
         .eval()
     )
@@ -258,12 +258,13 @@ def test():
     parser.add_argument('--data_path', type=str, default='data/davinci_003_outputs.json')
     args = parser.parse_args()
 
-    model, tokenizer = load_model_and_tokenizer(args.model_name_or_path, low_cpu_mem_usage=True, use_cache=False, device="cuda:3") # used to be cuda: + args.device
+    model, tokenizer = load_model_and_tokenizer(args.model_name_or_path, low_cpu_mem_usage=True, use_cache=False, device="cuda:" + args.device)
     model_name, frontend_delimiters, training_attacks, t = args.model_name_or_path.split('/')[-1].split('_')
     
     for a in args.attack:
         data = jload(args.data_path)
         benign_response_name = args.model_name_or_path + '/predictions_on_' + os.path.basename(args.data_path)
+        print('Benign response name', benign_response_name)
         if not os.path.exists(benign_response_name) or a != 'none': 
             llm_input = form_llm_input(
                 data, 
@@ -273,6 +274,7 @@ def test():
                 defense=args.defense
                 )
             asr, outputs = test_model_output(llm_input, model, tokenizer)
+            # NOTE: outputs gives us a pair (LLM response, bool), where bool is True if it printed hacked in the response. ASR is higher because they remove false positives manually.
 
         if a != 'none': # evaluate security
             print(f"\n{a} success rate {asr} on {model_name}, delimiters {frontend_delimiters}, training-attacks {training_attacks}, zero-shot defense {args.defense}\n")
@@ -301,5 +303,67 @@ def test():
                 (os.getcwd(), os.path.dirname(args.data_path), benign_response_name)
             )
 
+
+def test_defended_undefended():
+    print("Now testing passing the output of the defended model (A) to the input of the undefended model (B)")
+    parser = argparse.ArgumentParser(prog='Testing a model with a specific attack')
+    parser.add_argument('-m', '--model_name_or_path_A', type=str)
+    parser.add_argument('-um', '--model_name_or_path_B', type=str)
+    parser.add_argument('-a', '--attack', type=str, default=['naive', 'ignore', 'escape_deletion', 'escape_separation', 'completion_other', 'completion_othercmb', 'completion_real', 'completion_realcmb', 'completion_close_2hash', 'completion_close_1hash', 'completion_close_0hash', 'completion_close_upper', 'completion_close_title', 'completion_close_nospace', 'completion_close_nocolon', 'completion_close_typo', 'completion_close_similar', 'hackaprompt'], nargs='+')
+    parser.add_argument('-d', '--defense', type=str, default='none', help='Baseline test-time zero-shot prompting defense')
+    parser.add_argument('--device', type=str, default='0')
+    parser.add_argument('--data_path', type=str, default='data/davinci_003_outputs.json')
+    args = parser.parse_args()
+
+    model_A, tokenizer_A = load_model_and_tokenizer(args.model_name_or_path_A, low_cpu_mem_usage=True, use_cache=False, device="cuda:" + args.device)
+    model_name_A, frontend_delimiters_A, training_attacks_A, t_A = args.model_name_or_path_A.split('/')[-1].split('_')
+    
+    model_B, tokenizer_B = load_model_and_tokenizer(args.model_name_or_path_B, low_cpu_mem_usage=True, use_cache=False, device="cuda:2")
+    model_name_B, frontend_delimiters_B, training_attacks_B, t_B = args.model_name_or_path_A.split('/')[-1].split('_')
+    
+    for a in args.attack:
+        data = jload(args.data_path)
+        benign_response_name = args.model_name_or_path_A + '/predictions_on_' + os.path.basename(args.data_path)
+        if not os.path.exists(benign_response_name) or a != 'none': 
+            llm_input = form_llm_input(
+                data, 
+                eval(a), 
+                PROMPT_FORMAT[frontend_delimiters_A], 
+                apply_defensive_filter=not (frontend_delimiters_A == 'TextTextText' and training_attacks == 'None'),
+                defense=args.defense
+                )
+            asr, outputs = test_model_output(llm_input, model_A, tokenizer_A)
+            # NOTE: outputs gives us a pair (LLM response, bool), where bool is True if it printed hacked in the response. ASR is higher because they remove false positives manually.
+
+        if a != 'none': # evaluate security
+            print(f"\n{a} success rate {asr} on {model_name_A}, delimiters {frontend_delimiters_A}, training-attacks {training_attacks_A}, zero-shot defense {args.defense}\n")
+            log_dir = args.model_name_or_path_A.replace('models', 'logs')
+            os.makedirs(log_dir, exist_ok=True)
+            with open(log_dir + '/' + a + '-' + args.defense + '.csv', "w") as outfile:
+                writer = csv.writer(outfile)
+                writer.writerows([[llm_input[i], s[0], s[1]] for i, s in enumerate(outputs)])
+            summary_path = args.model_name_or_path_A.replace('models', 'logs') + '/summary.tsv'
+            if not os.path.exists(summary_path):
+                with open(summary_path, "w") as outfile: outfile.write("attack\tasr\tdefense\n")
+            with open(summary_path, "a") as outfile: outfile.write(f"{a}\t{asr}\t{args.defense}\n")
+        
+        else: # evaluate utility
+            if not os.path.exists(benign_response_name): 
+                for i in range(len(data)):
+                    assert data[i]['input'] in llm_input[i] and data[i]['instruction'] in llm_input[i]
+                    if data[i]['input'] != '': data[i]['instruction'] += '\n\n' + data[i]['input']
+                    data[i]['output'] = outputs[i]
+                    data[i]['generator'] = args.model_name_or_path
+                jdump(data, benign_response_name)
+            print('\nRunning AlpacaEval on', benign_response_name, '\n')
+            load_dotenv()
+            os.system(
+                'alpaca_eval --annotators_config %s/%s --is_overwrite_leaderboard --model_outputs %s' % \
+                (os.getcwd(), os.path.dirname(args.data_path), benign_response_name)
+            )
+    for response, _ in outputs:
+        print('Response', response)
+
+
 if __name__ == "__main__":
-    test()
+    test_defended_undefended()
