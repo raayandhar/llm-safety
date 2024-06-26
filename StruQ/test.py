@@ -9,6 +9,17 @@ from config import IGNORE_ATTACK_SENTENCES, PROMPT_FORMAT, DEFAULT_TOKENS, DELIM
 from struq import format_with_other_delimiters, _tokenize_fn, jload, jdump
 from dotenv import load_dotenv
 
+def save_arr_csv(input_arr, output_arr, filename):
+    os.makedirs('logs', exist_ok=True)
+    filepath = os.path.join('logs', filename)
+
+    with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(['Input', 'Output'])
+        for input_item, output_item in zip(input_arr, output_arr):
+            writer.writerow([input_item, output_item])
+
+    print(f"Data saved to {filepath}")
 
 def load_model_and_tokenizer(model_path, tokenizer_path=None, device="cuda:3", **kwargs):
     model = (
@@ -274,6 +285,15 @@ def test():
                 defense=args.defense
                 )
             asr, outputs = test_model_output(llm_input, model, tokenizer)
+            output_arr = []
+            input_arr = []
+            for i in range(len(outputs)):
+                input_arr.append(llm_input[i])
+                output_arr.append(outputs[i])
+                print("Latest index = ", i)
+            filename = "Attack:" + str(a)
+            save_arr_csv(input_arr, output_arr, filename)
+            # NOTE: Need to check that outputs len == input len. Does not seem to be the case? (sizes are different, what's going on? Setup notebook to investigate
             # NOTE: outputs gives us a pair (LLM response, bool), where bool is True if it printed hacked in the response. ASR is higher because they remove false positives manually.
 
         if a != 'none': # evaluate security
@@ -366,4 +386,4 @@ def test_defended_undefended():
 
 
 if __name__ == "__main__":
-    test_defended_undefended()
+    test()
