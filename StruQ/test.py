@@ -13,8 +13,11 @@ def save_arr_csv(input_arr, output_arr, filename):
     os.makedirs('logs', exist_ok=True)
     filepath = os.path.join('logs', filename)
 
+    if not filename.endswith('.csv'):
+        filename += '.csv'
+
     with open(filepath, 'w', newline='', encoding='utf-8') as csvfile:
-        writer = csv.writer(csvfile)
+        writer = csv.writer(csvfile, delimiter=',', quotechar='"', quoting=csv.QUOTE_MINIMAL)
         writer.writerow(['Input', 'Output'])
         for input_item, output_item in zip(input_arr, output_arr):
             writer.writerow([input_item, output_item])
@@ -283,7 +286,7 @@ def test():
                 PROMPT_FORMAT[frontend_delimiters], 
                 apply_defensive_filter=not (frontend_delimiters == 'TextTextText' and training_attacks == 'None'),
                 defense=args.defense
-                )
+            )
             asr, outputs = test_model_output(llm_input, model, tokenizer)
             output_arr = []
             input_arr = []
@@ -291,7 +294,7 @@ def test():
                 input_arr.append(llm_input[i])
                 output_arr.append(outputs[i])
                 print("Latest index = ", i)
-            filename = "Attack:" + str(a)
+            filename = "Attack:" + str(a) + ".csv"
             save_arr_csv(input_arr, output_arr, filename)
             # NOTE: Need to check that outputs len == input len. Does not seem to be the case? (sizes are different, what's going on? Setup notebook to investigate
             # NOTE: outputs gives us a pair (LLM response, bool), where bool is True if it printed hacked in the response. ASR is higher because they remove false positives manually.
