@@ -20,3 +20,4 @@ Output: Optimized prompt x_1:n
 
 # step 2., compute coordinate gradient, need this method first
 
+def coordinate_gradient(input_token_ids, 
