@@ -19,5 +19,16 @@ Output: Optimized prompt x_1:n
 """
 
 # step 2., compute coordinate gradient, need this method first
+"""
+def coordinate_gradient(input_token_ids, input_seq_slice, target_seq_slice, loss_slice, model):
 
-def coordinate_gradient(input_token_ids, 
+    embed_weights = None # they have a 'get_embedding_matrix(model)' function
+    one_hot = torch.zeros(
+        input_token_ids[input_seq_slice].shape[0],
+        embed_weights.shape[0],
+        device=model.device,
+        dtype=embed_weights.dtype
+    ) # what is this doing?
+    one_hat.scatter_ # ????
+"""
+# their code is incredibly hard to work with and understand
