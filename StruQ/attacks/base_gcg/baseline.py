@@ -1,5 +1,3 @@
-# This baseline.py file largely takes inspiration/structure and approach from HarmBench's baseline.py, so credit goes to them
-
 import numpy as np
 import os
 import json
@@ -11,8 +9,12 @@ class Attack:
     def __init__(self,
                  config,
                  model,
-                 tokenizer):
+                 tokenizer,
+                 **kwargs):
         raise NotImplementedError
 
     def log(self, path, file_name, verbose=False):
+        # Probably belongs in a utils file
         pass
+
+    def attack(self, **kwargs):
